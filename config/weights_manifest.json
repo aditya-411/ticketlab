@@ -1,0 +1,18 @@
+{
+  "release": "models-v1",
+  "files": [
+    {
+      "group": "selected-mlx-4bit",
+      "path": "models/selected-mlx-4bit/model.safetensors",
+      "size": 1736293583,
+      "sha256": "45f69b757424969c589e3d37d62c1f7895c334f86414e1d83e5f23e0e5aab8d2",
+      "parts": [
+        {
+          "asset": "model.safetensors",
+          "size": 1736293583,
+          "sha256": "45f69b757424969c589e3d37d62c1f7895c334f86414e1d83e5f23e0e5aab8d2"
+        }
+      ]
+    }
+  ]
+}

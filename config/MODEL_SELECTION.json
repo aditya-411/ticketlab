@@ -1,0 +1,12 @@
+{
+  "base_repo": "Qwen/Qwen2.5-3B-Instruct",
+  "base_revision": "aa8e72537993ba99e69dfaafa59ed015b17504d1",
+  "selected_checkpoint": "ticket-3b-v7",
+  "base_path": "models/base",
+  "latest_path": "models/ticket-3b-v7",
+  "base_file_sizes": {
+    "model-00001-of-00002.safetensors": 3968658944,
+    "model-00002-of-00002.safetensors": 2203268048
+  },
+  "note": "Full base and merged tuned weights are in the prepared local folder."
+}

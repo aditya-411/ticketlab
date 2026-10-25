@@ -1,0 +1,10 @@
+.DS_Store
+.venv/
+.modal.toml
+.env
+.env.*
+__pycache__/
+*.py[cod]
+models/**/*.safetensors
+models/*.part-*
+*.log

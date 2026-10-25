@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Base Qwen2.5-3B · 263 development tickets",
+    "summary": {"count": 263, "metrics": {"record_exact": 0.2889733840304182, "field_accuracy": 0.8354155350353086, "schema_valid": 1.0}}
+  },
+  {
+    "name": "Tuned v7 reference · same 263 tickets",
+    "summary": {"count": 263, "metrics": {"record_exact": 0.8669201520912547, "field_accuracy": 0.9750135795763177, "schema_valid": 1.0}}
+  }
+]
