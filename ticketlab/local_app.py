@@ -1,41 +1,47 @@
-"""Local-only TicketLab web app backed by an MLX model on Apple Silicon.
+"""TicketLab web app that extracts records through an SGLang server.
 
-The model is loaded lazily on the first extraction request. No cloud request is
-made by this program. Run the documented 4-bit conversion before starting it.
+Start SGLang first (see README.md). Requests use SGLang's JSON Schema
+constrained decoding, the same mode as the reported benchmark. Ticket text is
+sent only to the SGLang server given by --sglang-url (localhost by default).
 """
 import argparse
 import json
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ticketlab.schema import messages, parse_output
+from ticketlab.schema import SCHEMA, messages, parse_output
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL_PATH = ROOT / "models/selected-mlx-4bit"
 MODEL_KIND = "selected"
+SGLANG_URL = "http://127.0.0.1:30000"
 LOCK = threading.Lock()
-MODEL = None
-TOKENIZER = None
+
+
+def sglang_ready():
+    try:
+        urllib.request.urlopen(SGLANG_URL + "/model_info", timeout=2).close()
+        return True
+    except Exception:
+        return False
 
 
 def extract(text):
-    global MODEL, TOKENIZER
-    from mlx_lm import generate, load
-
-    if not any(MODEL_PATH.glob("*.safetensors")):
-        raise FileNotFoundError("The 4-bit local model is missing. Run the conversion command in README.md first.")
-    if MODEL is None:
-        MODEL, TOKENIZER = load(str(MODEL_PATH))
-    prompt = TOKENIZER.apply_chat_template(messages(text), tokenize=False,
-                                           add_generation_prompt=True)
+    if not sglang_ready():
+        raise ConnectionError("SGLang server is not reachable at " + SGLANG_URL + ". Start it as described in README.md.")
+    body = {"model": "default", "messages": messages(text), "temperature": 0, "max_tokens": 256,
+            "response_format": {"type": "json_schema",
+                                "json_schema": {"name": "ticket", "schema": SCHEMA, "strict": True}}}
+    request = urllib.request.Request(SGLANG_URL + "/v1/chat/completions", json.dumps(body).encode(),
+                                     {"Content-Type": "application/json"})
     started = time.monotonic()
-    output = generate(MODEL, TOKENIZER, prompt=prompt, max_tokens=256,
-                      verbose=False)
+    with urllib.request.urlopen(request, timeout=180) as response:
+        output = json.load(response)["choices"][0]["message"]["content"]
     result = {"output": output, "latency_seconds": time.monotonic() - started,
               "checkpoint": checkpoint_name(),
-              "decoding": "local_greedy", "engine": "MLX-LM"}
+              "decoding": "json_schema_constrained", "engine": "SGLang"}
     try:
         result.update(parsed=parse_output(output), schema_valid=True)
     except Exception as exc:
@@ -62,8 +68,8 @@ def serve(port):
         def do_GET(self):
             if self.path == "/api/status":
                 return self.send_json(200, {"checkpoint": checkpoint_name(),
-                                            "model": "Qwen2.5 · 3B", "engine": "MLX-LM",
-                                            "ready": any(MODEL_PATH.glob("*.safetensors"))})
+                                            "model": "Qwen2.5 · 3B", "engine": "SGLang",
+                                            "ready": sglang_ready()})
             if self.path == "/api/results":
                 path = ROOT / "metrics/comparison.json"
                 return self.send_json(200, json.loads(path.read_text()) if path.exists() else [])
@@ -117,8 +123,10 @@ def serve(port):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8080)
-    parser.add_argument("--model", choices=["selected", "base"], default="selected")
+    parser.add_argument("--model", choices=["selected", "base"], default="selected",
+                        help="label of the model served by SGLang")
+    parser.add_argument("--sglang-url", default=SGLANG_URL)
     args = parser.parse_args()
     MODEL_KIND = args.model
-    MODEL_PATH = ROOT / f"models/{args.model}-mlx-4bit"
+    SGLANG_URL = args.sglang_url.rstrip("/")
     serve(args.port)

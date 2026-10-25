@@ -7,8 +7,8 @@
 TicketLab turns a customer support message into a seven-field JSON record:
 `order_id`, `product`, `issue_type`, `quantity`, `requested_resolution`,
 `prior_contacts`, and `needs_review`. Missing facts stay `null`; conflicting
-or uncertain tickets are marked for review. The web app serves locally and
-sends ticket text only to the model on your Mac.
+or uncertain tickets are marked for review. The web app calls an SGLang server that you run yourself, so ticket text goes
+only to that server.
 
 ## What we built
 
@@ -22,8 +22,8 @@ model used by the local app.
 We generated synthetic support tickets, cleaned and deduplicated training
 examples with Lexsi CuratorKIT, and fine-tuned the base model with Lexsi
 AlignTune. We evaluated base and tuned checkpoints through SGLang JSON Schema
-constrained decoding and Lexsi AuditKIT. The local app uses MLX-LM greedy
-decoding, so its outputs can differ from the SGLang benchmark.
+constrained decoding and Lexsi AuditKIT. The local app uses SGLang with the same JSON Schema
+constrained decoding, serving the tuned model.
 
 ## Base versus tuned
 
@@ -42,63 +42,54 @@ The values served in the web interface are in `metrics/comparison.json`.
 
 | Folder | Contents |
 | --- | --- |
-| `models/` | Base and tuned model metadata, selected model link, and 4-bit local runtime |
+| `models/` | Base and tuned model metadata and the selected model link |
 | `ticketlab/` | Local server and seven-field output schema |
 | `web/` | Browser interface |
 | `config/` | Local dependencies, checkpoint selection, and weight checksums |
 | `scripts/` | Weight downloader for a fresh clone |
 | `metrics/` | Base and tuned comparison shown by the interface |
 
-Full precision base and tuned weights remain in the prepared local folder.
-GitHub stores the 4-bit tuned weight as a Release asset; the pinned base can
-be downloaded from Hugging Face. A fresh clone can run the tuned model with:
+## Run with SGLang
+
+SGLang is the only inference engine this project uses. Any machine that
+SGLang supports can serve the model; see the
+[SGLang installation guide](https://docs.sglang.ai/get_started/install.html)
+for your hardware. The tuned weights are merged 16-bit Qwen2.5-3B (about
+6.2 GB), stored as GitHub Release parts and restored by the downloader.
 
 ```sh
 git clone https://github.com/aditya-411/ticketlab.git
 cd ticketlab
 python3 -m venv .venv
 .venv/bin/python -m pip install -r config/requirements-local.txt
+.venv/bin/python -m pip install "sglang[all]"
 .venv/bin/python scripts/download_weights.py
+```
+
+Terminal 1, the model server:
+
+```sh
+.venv/bin/python -m sglang.launch_server \
+  --model-path models/ticket-3b-v7 --host 127.0.0.1 --port 30000
+```
+
+Terminal 2, the web app (open [http://127.0.0.1:8080](http://127.0.0.1:8080)):
+
+```sh
 .venv/bin/python -m ticketlab.local_app
 ```
 
-## Run the tuned model locally
+Use `--sglang-url` to point the app at an SGLang server on another host. To
+compare with the base model, run `scripts/download_weights.py --model base`,
+serve `models/base` from SGLang on another port, and start the app with
+`--model base --sglang-url http://127.0.0.1:30001 --port 8081`.
 
-Use an Apple Silicon Mac. This workflow targets an M3 MacBook Air with 8 GB
-RAM. The web interface and local HTTP endpoints have been smoke-tested, and a
-1.6 GB 4-bit conversion artifact is present in the prepared folder. A local
-inference run on the included sample ticket produced a schema-valid record
-with the expected seven fields. Free memory before conversion,
-since the merged source weights occupy about 6.17 GB.
-
-In the prepared local folder, the 4-bit tuned weight already exists. Start
-the server directly:
-
-```sh
-cd "/Users/adityajain/Desktop/syntax error 2026/submission"
-python3 -m venv .venv
-.venv/bin/python -m pip install -r config/requirements-local.txt
-.venv/bin/python -m ticketlab.local_app
-```
-
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Later runs need only
-the last command. The server binds to
-`127.0.0.1`, and inference does not call an online model.
-
-To test the base model with the same interface, convert `models/base` to a
-separate MLX folder. Do not overwrite the tuned conversion folder.
-
-```sh
-.venv/bin/python scripts/download_weights.py --model base
-.venv/bin/python -m mlx_lm convert --hf-path models/base \
-  --mlx-path models/base-mlx-4bit --quantize --q-bits 4
-.venv/bin/python -m ticketlab.local_app --model base --port 8081
-```
-
-Open [http://127.0.0.1:8081](http://127.0.0.1:8081) for the base model.
+The app sends each ticket with the JSON Schema in `ticketlab/schema.py` as
+the response format, which is the constrained decoding mode used in the
+benchmark.
 
 ## Limits
 
-The scores above used synthetic tickets and SGLang constrained decoding. The
-local MLX interface uses greedy decoding and validates each output against
-the schema. Human review remains necessary for support decisions.
+The scores above used synthetic tickets and do not establish accuracy on real
+customer tickets. Every output is validated against the schema, and human
+review remains necessary for support decisions.
